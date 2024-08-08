@@ -1,6 +1,9 @@
 #credentials ignored
 **/credentials.py
 
+logs/
+**/logs/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
