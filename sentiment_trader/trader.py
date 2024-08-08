@@ -21,14 +21,16 @@ ALPACA_CONFIG = {
 }
 
 class SentimentStrategy(Strategy): 
-    def initialize(self, symbol: str = "SPY", max_cash_at_risk: float=.10, confidence_threshold: float=.999, emergency_threshold: float = .999, news_days_prior: int = 3): 
+    def initialize(self, symbol: str = "SPY", max_cash_at_risk: float=.10, buy_threshold: float=.999, sell_threshold: float=.999, sell_emergency: float = .999, buy_emergency: float= .999, news_days_prior: int = 3): 
         self.symbol = symbol
-        self.sleeptime = "24H"
+        self.sleeptime = "12H"
         self.last_trade = None
         self.max_cash_at_risk = max_cash_at_risk
         self.api = REST(base_url=BASE_URL, key_id=API_KEY, secret_key=API_SECRET)
-        self.confidence_threshold = confidence_threshold
-        self.emergency_threshold = emergency_threshold
+        self.buy_threshold = buy_threshold
+        self.sell_threshold = sell_threshold
+        self.buy_emergency = buy_emergency
+        self.sell_emergency = sell_emergency
         self.days = news_days_prior
     
     def position_sizing(self):
@@ -59,14 +61,15 @@ class SentimentStrategy(Strategy):
 
     def on_trading_iteration(self):
         cash, last_price, quantity = self.position_sizing()
-        probability, sentiment, _ = self.get_sentiment()
+        probability, sentiment, news = self.get_sentiment()
         if cash > last_price: 
-            if sentiment == "positive" and probability > self.confidence_threshold: 
+            if sentiment == "positive" and probability > self.buy_threshold: 
                 #print("last_price:" + str(last_price) + " cash:" + str(cash) + " quantity:" + str(quantity))
 
-                if self.last_trade == "sell" and probability > self.emergency_threshold: 
+                if self.last_trade == "sell" and probability > self.sell_emergency: 
 
                     self.sell_all()
+                    
 
                 elif self.last_trade == "sell":
 
@@ -85,9 +88,11 @@ class SentimentStrategy(Strategy):
                     self.submit_order(order) 
                     
                 else:
+                    q = quantity*float(1-(probability - self.buy_threshold)/(1 - self.buy_threshold))
+                    if q < 1: return
                     order = self.create_order(
                         self.symbol, 
-                        max(1, quantity*float(1-(probability - self.confidence_threshold)/(1 - self.confidence_threshold))),
+                        q,
                         "buy", 
                         type="bracket", 
                         take_profit_price=last_price*1.20, 
@@ -97,10 +102,10 @@ class SentimentStrategy(Strategy):
                     self.submit_order(order) 
                 self.last_trade = "buy"
 
-            elif sentiment == "negative" and probability > self.confidence_threshold: 
+            elif sentiment == "negative" and probability > self.sell_threshold: 
 
-                if self.last_trade == "buy" and probability > self.emergency_threshold: 
-
+                if self.last_trade == "buy" and probability > self.buy_emergency: 
+                    print(news)
                     self.sell_all()
 
                 elif self.last_trade == "buy":
@@ -120,9 +125,11 @@ class SentimentStrategy(Strategy):
                     self.submit_order(order) 
                     
                 else:
+                    q = quantity*float(1-(probability - self.sell_threshold)/(1 - self.sell_threshold))
+                    if q < 1: return
                     order = self.create_order(
                         self.symbol, 
-                        max(1, quantity*float(1-(probability - self.confidence_threshold)/(1 - self.confidence_threshold))), 
+                        q, 
                         "sell", 
                         type="bracket", 
                         take_profit_price=last_price*.8, 
@@ -134,11 +141,11 @@ class SentimentStrategy(Strategy):
 
 if __name__ == "__main__":
     broker = Alpaca(ALPACA_CONFIG)
-    params = {"symbol":"SPY", "max_cash_at_risk": .9, "confidence_threshold": .4, "emergency_threshold":.99,"news_days_prior": 5}
+    params = {"symbol":"SPY", "max_cash_at_risk": .8, "buy_threshold": .3, "sell_threshold": .7, "sell_emergency":.99, "buy_emergency":.98, "news_days_prior": 7}
     strategy = SentimentStrategy(name="sentimentmlstrategy", broker=broker, parameters=params)
 
     start_date = datetime(2020, 8, 1)
-    end_date = datetime(2024, 8, 1)
+    end_date = datetime(2021, 2, 12)
 
     strategy.backtest(
         YahooDataBacktesting, 
